@@ -1,7 +1,10 @@
-
+#include <cstring>
+#include <string>
+#include "debug.h"
 #include "heap.h"
 
 #define DEFNUMELEMENTS 512
+
 #define HEAPLEFT(i) (i*2)
 #define HEAPRIGHT(i) (i*2+1)
 #define HEAPPARENT(i) (i/2)
@@ -34,15 +37,13 @@ void HEAP::HeapifyUp(int i)
     while (i > 1)
     {
         int p = HEAPPARENT(i);
-        int kp = HEAPELEMENT(p).key;
-        int ki = HEAPELEMENT(i).key;
         
-        if (kp <= ki)
+        if (HEAPELEMENT(p).key <= HEAPELEMENT(i).key)
         {
             // if parent <= than child (i), heap holds, done
             break;
         }
-        else if (kp > ki)
+        else
         {
             // if parent greater than child, swap and continue checking upward
             HeapSwap(pE, p, i);
@@ -54,6 +55,24 @@ void HEAP::HeapifyUp(int i)
 
 void HEAP::HeapifyDown(int i)
 {
+    if (i >= nElements)
+        return;
+        
+    int l = HEAPLEFT(i);
+    int r = HEAPRIGHT(i);
+    int m = i;
+    
+    if ((l <= nElements) && (HEAPELEMENT(l).key < HEAPELEMENT(i).key))
+        m = l;
+        
+    if ((r <= nElements) && (HEAPELEMENT(r).key < HEAPELEMENT(m).key))
+        m = r;
+        
+    if (m == i)
+        return;
+        
+    HeapSwap(pE, m, i);
+    HeapifyDown(m);
 }
 
 HEAP::insertElement(int key, void *pData)
