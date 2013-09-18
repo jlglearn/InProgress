@@ -1,98 +1,132 @@
-#include <memory>
-#include <vector>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 #include <fstream>
 #include <sstream>
-#include <cstring>
+#include <iostream>
+#include "debug.h"
+#include "bitfield.h"
 #include "graph.h"
 
-Graph::Graph()
+static void * resizeBlock((void *) pOld, int oldsize, int newsize, int elementSize)
 {
+    void *pNew = (void *) malloc( elementSize * newsize );
+    memset(pNew, 0, elementSize * newsize);
+    if ((pOld != (void *)0) && (oldsize != 0))
+    {
+        memcpy(pNew, pOld, elementSize * oldsize);
+        free(pOld);
+    }
+    return pNew;
+}
+
+GRAPH::GRAPH(void)
+{
+    pB = new BITFIELD(DEFNODESSIZE);
+    
+    sizeNodes = 0;
+    sizeEdges = 0;
     nNodes = 0;
     nEdges = 0;
-    memset((void *)&bf[0], 0, sizeof(bf));
+    
+    pN = resizeNodes((GraphNode *)0, 0, DEFNODESSIZE);
+    pE = resizeEdges((GraphEdge *)0, 0, DEFEDGESSIZE);
+    sizeNodes = DEFNODESSIZE;
+    sizeEdges = DEFEDGESSIZE;
+    
+    fLoading = 0;
 }
 
-Graph::~Graph()
+GRAPH::~GRAPH(void)
 {
-}
-
-int Graph::addNode(int idNode)
-{
-    if ( !hasNode(idNode))
+    delete(pB);
+    
+    if (pN)
     {
-        Nodes[nNodes].id = idNode;
-        Nodes[nNodes].nNeighbors = 0;
-        setBit(idNode);
-        nNodes++;
+        for (int i = 0; i < nNodes; i++)
+        {
+            if (pN[i].pvE) delete(pvE);
+        }
+        free(pN);
     }
+    
+    if (pE) free(pE);
 }
 
-int Graph::addEdge(int src, int dst, double w)
+int GRAPH::Load(char *filename)
 {
-}
-
-int Graph::hasNode(int idNode)
-{
-    return (getBit(idNode) != 0);
-}
-
-int Graph::LoadFile(char *filename)
-{
-    ifstream f(filename);
+    std::ifstream fs(filename);
     std::string s;
     
-    int cNodes;
-    
-    for (int i = 0; getline(f, s); i++)
+    fLoading = 1;
+    for (int i = 0; getline(fs, s); i++)
     {
-        int idNode, neighbor;
-        isstream ss(s);
+        std::istringstream ss(s);
         
-        if (i > 0)
-        {
-            // first item is node id
-            ss >> idNode;
-            
-            if (!hasNode(idNode))
-                addNode(idNode);
-            
-            // remaining items are its neighbors
-            while ( ss >> neighbor )
-            {
-                if (!hasNode(neighbor))
-                    addNode(neighbor);
-                    
-                addEdge(idNode, neighbor, 1.0);
-            }
-            
-        }
-        else
-        {
-            // read number of nodes
-            s >> cNodes;
-        }
+        int src, dst;
+        float w;
+        
+        ss >> src;
+        ss >> dst;
+        ss >> w;    
+        
+        addEdge(src, dst, w);
+    }
+    fLoading = 0;
+    return i;
+}
+
+int GRAPH::addNode(int idNode)
+{
+    ASSERT(!pB->getBit(idNode), "GRAPH::addNode: node already added");
     
+    if (nNodes >= sizeNodes)
+        resizeNodes();
+        
+    pN[nNodes].id = idNode;
+    pN[nNodes].pvE = new vector<int>(DEFNEIGHBORS);
+    pB->setBit(idNode);
+    nNodes++;
+}
+
+int GRAPH::addEdge(int idSrc, int idDst, float w)
+{
+    if (!pB->getBit(idSrc))
+        addNode(idSrc);
+        
+    if (!pB->getBit(idDst))
+        addNode(idDst);
+        
+    if (nEdges >= sizeEdges)
+        resizeEdges();
+        
+    pE[nEdges].id = nEdges;
+    pE[nEdges].idN1 = ((idSrc < idDst) ? idSrc : idDst);
+    pE[nEdges].idN2 = ((idSrc < idDst) ? idDst : idSrc);
+    pE[nEdges].w = w;
     
-    return 1;
+    if (!fLoading)
+    {
+        // if reading from file (loading), this will be done in bulk at the end of load
+        recordEdge(idSrc, nEdges);
+        recordEdge(idDst, nEdges);
+    }
+    
+    nEdges++;
 }
 
-int Graph::WriteFile(char *filename)
+void GRAPH::resizeNodes(void)
 {
-    return 1;
+    int newsize = ((sizeNodes == 0) ? DEFNODESSIZE : sizeNodes * 2);
+    pN = resizeBlock((void *)pN, sizeNodes, newsize, sizeof(GraphNode));
 }
 
-void Graph::setBit(int id)
+void GRAPH::resizeEdges(void)
 {
-    ASSERT(id <= (8*sizeof(bf)), "setBit::id out of range");
-    int i = (id / (8*sizeof(int)));
-    int k = (1 << (id % (8*sizeof(int))));
-    bf[i] |= k;
+    int newsize = ((sizeEdges == 0) ? DEFEDGESSIZE : sizeEdges * 2);
+    pE = resizeBlock((void *)pE, sizeEdges, newsize, sizeof(GraphEdge));
 }
 
-int Graph::getBit(int id)
+void GRAPH::recordEdge(int idNode, int idEdge)
 {
-    ASSERT(id <= (8*sizeof(bf)), "getBit::id out of range");
-    int i = (id / (8*sizeof(int)));
-    int k = (1 << (id % (8*sizeof(int))));
-    return bf[i] & k;
 }

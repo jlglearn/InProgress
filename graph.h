@@ -1,50 +1,57 @@
 #ifndef _GRAPH_H_
 #define _GRAPH_H_
 
+#include <iostream>
+#include <fstream>
+#include <cstring>
 #include <vector>
+#include <string>
+#include "bitfield.h"
 
-#define DEFNUMNODES    1024
-#define DEFNUMEDGES    1024
-
+#define DEFNODESSIZE 512
+#define DEFEDGESSIZE 512
+#define DEFNEIGHBORS 8
 
 struct structGraphEdge {
     int id;
-    int iN1;
-    int iN2;
-    double w;
+    int idN1;
+    int idN2;
+    float w;
 };
-
-typedef struct structGraphEdge GraphEdge;
 
 struct structGraphNode {
     int id;
-    int nNeighbors;
-    std::vector<int> vEdges;
-};
+    std::vector<int> *pvE;
+};  
 
+typedef struct structGraphEdge GraphEdge;
 typedef struct structGraphNode GraphNode;
 
-class Graph
+class GRAPH
 {
-public:
-    Graph();
-    ~Graph();
+    public:
+    GRAPH();
+    ~GRAPH();
     
-    int LoadFile(char *filename);
-    int WriteFile(char *filename);
+    int Load(char *filename);
     int addNode(int idNode);
-    int addEdge(int src, int dst, double w);
-    int hasNode(int idNode);
-
-private:
-    std::vector<GraphNode> Nodes[DEFNUMNODES];
-    std::vector<GraphEdge> Edges[DEFNUMEDGES];
+    int addEdge(int idSrc, int idDst, float w);
+       
+    private:
+    BITFIELD *pB;
+    GraphEdge *pE;
+    GraphNode *pN;
+    int sizeNodes;
+    int sizeEdges;
     int nNodes;
     int nEdges;
-    int bf[1024*1024/(8*sizeof(int))];
     
-    void setBit(int id);
-    int getBit(int id);
+    int fLoading;
+    
+    void resizeNodes(void);
+    void resizeEdges(void);
+    int findNode(int idNode);
+    int recordEdge(int idNode, int idEdge);
 };
 
 #endif
