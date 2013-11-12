@@ -1,25 +1,4 @@
-#ifndef _HEXBOARD_H_
-#define _HEXBOARD_H_
-
-#include "graph.h"
-
-enum HEXCOLOR { HEXBLUE, HEXRED };
-
-class HexBoard {
-
-    public:
-    HexBoard(int n);
-    
-    private:
-    
-    Graph board;
-    int   size;                         // board size (number of rows, number of columns)
-    int TOP, BOTTOM, LEFT, RIGHT;       // index of 4 virtual cells
-    
-    int cellIndex(int row, int col);    // given a (row, column) pair, compute index of node
-};
-
-#endif
+#include "hexboard.h"
 
 HexBoard::HexBoard(int n)
 {
@@ -31,44 +10,65 @@ HexBoard::HexBoard(int n)
     RIGHT  = n * n + 3;                 // virtual RIGHT cell
     
     board.Reset(n * n + 4);             // board has size (n * n) + 4 virtual nodes
+    cells.Resize(n * n + 4);            // cells array has same size as board
     
     for (int r = 0; r < size; r++)
     {
         for (int c = 0; c < size; c++)
         {
-            int thisCell = index(r, c);
+            int idCell = cellIndex(r, c);
+            
+            // initialize cell to BLANK
+            cells[idCell].idCell = idCell;
+            cells[idCell].color = HEXBLANK;
             
             // unless left-most column, connect left and down-left
             if (c > 0)
             {
                 // connect with cell to the left
-                connect(thisCell, cellIndex(r, c-1));
+                connect(idCell, cellIndex(r, c-1));
                 
                 // unless bottom row, connect with cell down-left
-                if (r < (size - 1)) connect(thisCell, index(r+1, c-1));
+                if (r < (size - 1)) connect(idCell, cellIndex(r+1, c-1));
             }
             
             // unless right-most column, connect right
-            if (c < (size - 1)) connect(thisCell, index(r, c+1));
+            if (c < (size - 1)) connect(idCell, cellIndex(r, c+1));
             
             // unless bottom row, connect down
-            if (r < (size - 1)) connect(index(r,c), index(r+1, c));
+            if (r < (size - 1)) connect(cellIndex(r,c), cellIndex(r+1, c));
             
             // if leftmost column, connect with LEFT virtual cell
-            if (c == 0) connect(thisCell, LEFT);
+            if (c == 0) connect(idCell, LEFT);
             
             // if rightmost column, connect with RIGHT virtual cell
-            if (c == (size - 1)) connect(thisCell, RIGHT);
+            if (c == (size - 1)) connect(idCell, RIGHT);
             
             // if topmost row, connect with TOP virtual cell
-            if (r == 0) connect(thisCell, TOP);
+            if (r == 0) connect(idCell, TOP);
             
             // if bottommost row, connect with BOTTOM cell
-            if (r == (size - 1)) connect(thisCell, BOTTOM);
+            if (r == (size - 1)) connect(idCell, BOTTOM);
         }
     }
+    
+    // initialize BLUEHOME, REDHOME, BLUEGOAL, REDGOAL
+    BLUEHOME = BOTTOM;
+    BLUEGOAL = TOP;
+    REDHOME  = LEFT;
+    REDGOAL  = RIGHT;
+    
+    nextMove = HEXBLUE;         // blue starts
 }
 
-inline int HexBoard::index(int row, int col) 
-{   return (r * size) + c;  }
+inline int HexBoard::cellIndex(int row, int col) 
+{   return (row * size) + col;  }
+
+void HexBoard::connect(CellID c1, CellID c2)
+{   board.AddEdge((VertexID) c1, (VertexID) c2);    }
+
+HexMoveResult HexBoard::Move(HexBoardColor turn, int row, int col)
+{
+}
+
     
