@@ -1,5 +1,109 @@
 
 
+/* -------------------------------------------------------------------
+   HexGame class
+   
+   Manage turns, enforce rules, determine winner.
+   ------------------------------------------------------------------- */
+HexGame::HexGame(int n)
+{
+    int n2 = n * n;
+    
+    pBoard = new HexBoard(n);           // create board    
+    pUF = new UnionFind(n2 + 4);        // create UnionFind for easy winner detection
+    cFree = n2;                         // start with all cells free    
+    turn = HEXBLUE;                     // BLUE moves first
+    
+    // set the indices of the 4 virtual cells
+    BLUEHOME = n2 + 0;
+    BLUEGOAL = n2 + 1;
+    REDHOME  = n2 + 2;
+    REDGOAL  = n2 + 3;
+    
+}
+
+HexGame::~HexGame(void)
+{
+    if (pBoard) delete pBoard;
+    if (pUF) delete pUF;
+}
+
+// ------ return the color of the given cell
+HexColor HexGame::Color(int row, int col)
+{  return pBoard->Color(row, col);  }
+
+// ------ return whose turn it is to play
+HexColor HexGame::Turn(void)
+{  return turn; }
+
+// ------ return the board dimension
+int HexGame::dim(void)
+{   return pBoard->dim();   }
+
+// ------ accept a move, determine whether it's legal and whether it leads to a win
+HexMoveResult HexGame::Move(HexColor turn, int row, int col)
+{
+    if (turn != this->turn) 
+        return HEXMOVE_INVALIDTURN;
+        
+    if (!CheckRowCol(row, col)) 
+        return HEXMOVE_INVALIDCELL;
+    
+    if (pBoard->Color(row, col) != HEXBLANK)
+        return HEXMOVE_OCCUPIED;
+
+    HexPositionSet hps;
+    int iHome, iGoal;
+    int iCell = pBoard->cellIndex(row, col);
+    int size  = pBoard->dim();
+
+    // set current cell's color
+    pBoard->SetColor(row, col, turn);
+    
+    // retrieve adjacent cells of same color
+    pBoard->Adjacent(row, col, hps, turn);
+    
+    // and connect to them        
+    for (int i = 0; i < hps.size(); i++)
+        pUF->Join(iCell, pBoard->cellIndex(hps.row, hps.col));
+    
+    // BLUE moves DOWN-UP
+    if (turn == HEXBLUE)
+    {
+        if (row == 0) 
+            pUF->Join(iCell, BLUEGOAL);
+            
+        if (row == (size - 1)) 
+            pUF->Join(iCell, BLUEHOME);
+            
+        iHome = BLUEHOME;
+        iGoal = BLUEGOAL;
+    }
+    else // RED moves LEFT-RIGHT
+    {
+        if (col == 0)
+            pUF->Join(iCell, REDHOME);
+            
+        if (col == (size - 1))
+            pUF->Join(iCell, REDGOAL);
+            
+        iHome = REDHOME;
+        iGoal = REDGOAL;
+    }
+    
+    // determine whether player has won
+    if (pUF->Find(iHome) == pUF->Find(iGoal))
+        return HEXMOVE_WINNER;
+        
+    // determine whether any empty cell remains
+    if (--cFree == 0)
+        return HEXMOVE_DRAW;
+        
+    // record whose next turn
+    this->turn = ((turn == HEXBLUE) ? HEXRED : HEXBLUE);
+        
+    return HEXMOVE_OK;
+}
 
 
 /* -------------------------------------------------------------------
@@ -39,7 +143,7 @@ void HexBoard::Adjacent(int row, int col, HexPositionSet &hps, HexColor color = 
 {
     int i, iCell, iNeighbor, iMax;
     
-    CheckRowCol(row, col);
+    if (!CheckRowCol(row, col)) throw HEXGAME_ERR_INVALIDCELL;
     
     iMax = size * size;
     hps.clear();
@@ -48,7 +152,7 @@ void HexBoard::Adjacent(int row, int col, HexPositionSet &hps, HexColor color = 
 
     for (int i = 0; i < NEIGHBORS; i++)
     {
-        int iNeighbor = iCell + neigborOffsets[i].indexOffset;
+        int iNeighbor = iCell + neighborOffsets[i].indexOffset;
         
         if ((iNeighbor < 0) || (iNeighbor >= iMax))
         {
@@ -69,38 +173,52 @@ void HexBoard::Adjacent(int row, int col, HexPositionSet &hps, HexColor color = 
     }
 }
 
+void HexBoard::AllCells(HexPositionSet &hps, HexColor color = HEXBLANK )
+{
+    int iMax = size * size;
+    
+    hps.clear();
+    
+    // iterate through all cells and return those that are of the requested color
+    for (int i = 0; i < iMax; i++)
+    {
+        if (cells[i] == color)
+        {
+            HexPosition p;
+            p.row = rowFromIndex(i);
+            p.col = colFromIndex(i);
+            p.color = color;
+            hps.push_back(p);
+        }
+    }
+}
+
 inline int HexBoard::dim(void)
 {   return size;    }
 
 HexColor HexBoard::Color(int row, int col)
 {
-    CheckRowCol(row, col);
+    if (!CheckRowCol(row, col)) throw HEXGAME_ERR_INVALIDCELL;
     return cells[cellIndex(row, col)];
 }
 
-
-
-void HexBoard::CheckRowCol(int row, int col)
-{   
-    if ((row < 0) || (row >= size) || (col < 0) || (col >= size))
-        throw HEXGAME_ERR_INVALIDCELL;
+void HexBoard::SetColor(int row, int col, HexColor color)
+{
+    if (!CheckRowCol(row, col)) throw HEXGAME_ERR_IVALIDCELL;
+    
+    int iCell = cellIndex(row, col);        
+    if (cells[iCell] != HEXBLANK) throw HEXGAME_ERR_CELLOCCUPIED;
+    
+    cells[iCell] = color;
 }
+
+bool HexBoard::CheckRowCol(int row, int col)
+{   return ((row >= 0) && (row < size) && (col >= 0) && (col < size));  }
 
 /* -------------------------------------------------------------------
-   HexPosition class
-   
+   HexPosition class   
    ------------------------------------------------------------------- */
 HexPosition::HexPosition(void) { }
-
-HexPosition::HexPosition(int row, int col, HexColor color)
-{
-    if ((row < 0) || (col < 0))
-        throw HEXGAME_ERR_INVALIDCELL;
-    this->row = row;
-    this->col = col;
-    this->color = color;
-}
-
 inline int HexPosition::Row(void) { return row; }
 inline int HexPosition::Col(void) { return col; }
 inline HexColor HexPosition::Color(void) { return color; }

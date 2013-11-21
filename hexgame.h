@@ -30,7 +30,6 @@ typedef enum enumHexMoveResult {
 class HexPosition {
     public:
     HexPosition(void);
-    HexPosition(int row, int col, HexColor color);
     int Row(void);
     int Col(void);
     HexColor Color(void);
@@ -41,6 +40,7 @@ class HexPosition {
     HexColor color;
     
     friend class HexBoard;
+    friend class HexGame;
 };
 
 // ----------------------------------------------------------------------------
@@ -75,25 +75,28 @@ class HexBoard {
     // ------- return the set of cells adjacent to the given cell
     //         client provides a reference to a HexPositionSet object that will
     //         be used to return adjacency information.
-    //         an optional parameter (color) restricts adjacent cells that have
+    //         an optional parameter (color) restricts result to adjacent cells of
     //         specified color
     void Adjacent(int row, int col, HexPositionSet &hps, HexColor color = HEXNULL );
+    
+    // ------- return the set of all cells of the given color (or blank, if no color
+    //         specified)
+    void AllCells(HexPositionSet &hps, HexColor color = HEXBLANK );
     
     // ------- return the dimension of the board
     inline int dim(void);
     
     private:
     int UP, DOWN, LEFT, RIGHT;
-    const int NEIGHBORS = 6;
-    
     int size;                                  // board dimension
     
     // offsets to access adjacent cells, pre-set rowOffset and colOffset.
     // indexOffset will be set in constructor, when we know the dimension of the board.
+    const int NEIGHBORS = 6;
     NeighborOffset neighborOffsets[NEIGHBORS] = {
         { -1, 0, 0 }, { -1, 1, 0 },
         { 0, -1, 0 }, {  0, 1, 0 },
-        { 1, -1, 0 }, { 1, -1, 0 }        
+        { 1, -1, 0 }, {  1, 0, 0 }        
     };
     
     enum { OFFSET_UP = 0, OFFSET_UPRIGHT, 
@@ -105,8 +108,17 @@ class HexBoard {
     // ------- compute the index of given row, col
     inline int cellIndex(int row, int col) { return row * size + col; }
     
+    // ------- compute the row, col from a given index
+    inline int rowFromIndex(int index) { return index / size; }
+    inline int colFromIndex(int index) { return index % size; }
+    
     // ------- check that the given row, col are valid
     void CheckRowCol(int row, int col);
+    
+    // ------- set the color of the given cell
+    void SetColor(int row, int col, HexColor color);
+    
+    friend class HexGame;
 };
 
 // ----------------------------------------------------------------------------
@@ -140,7 +152,9 @@ class HexGame {
     UnionFind *pUF;         // pointer to UnionFind structure for quick detection of winning moves
     
     int       cFree;        // number of free cells
+    HexColor  turn;         // current turn
     
+    int       BLUEHOME, BLUEGOAL, REDHOME, REDGOAL; // indices of 4 virtual cells
 };
 
 // ----------------------------------------------------------------------------
@@ -162,14 +176,13 @@ class HexPlayer {
 // ----------------------------------------------------------------------------
 class HexGameDriver {
     public:
-    HexGameDriver(void);
+    HexGameDriver(int n);
     ~HexGameDriver(void);
     
     // -------- Register a player.  Returns the color assigned to the player
-    //          (first registered player is assigned BLUE, second player, RED)
-    //          HEXNULL is returned for any attempt to register players in
-    //          excess of 2
-    HexColor RegisterPlayer(HexPlayer &player);
+    //          (unless a color is specified, first registered player is 
+    //          assigned BLUE, second player, RED)
+    HexColor RegisterPlayer(HexPlayer &player, HexColor color=HEXBLUE);
     
     // -------- Play a game.  The computer will play the part of any unregistered
     //          player.
@@ -180,6 +193,8 @@ class HexGameDriver {
     HexPlayer &bluePlayer;
     HexPlayer &redPlayer;
     int nPlayers;           // players already registered
+    
+    HexGame game;           // the game
 };
 
 // ----------------------------------------------------------------------------
@@ -188,5 +203,6 @@ class HexGameDriver {
 typedef enum enumHexGameError {
     HEXGAME_ERR_INVALIDCELL = 0x111,
     HEXGAME_ERR_INVALIDSIZE,
+    HEXGAME_ERR_CELLOCCUPIED,
     HEXGAME_ERR_OUTOFMEMORY
     };
