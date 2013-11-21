@@ -1,6 +1,9 @@
 #ifndef _HEXGAME_H_
 #define _HEXGAME_H_
 
+#include <vector>
+#include "unionfind.h"
+
 // ----------------------------------------------------------------------------
 // define chip colors
 // ----------------------------------------------------------------------------
@@ -26,6 +29,7 @@ typedef enum enumHexMoveResult {
 // ----------------------------------------------------------------------------
 class HexPosition {
     public:
+    HexPosition(void);
     HexPosition(int row, int col, HexColor color);
     int Row(void);
     int Col(void);
@@ -35,6 +39,8 @@ class HexPosition {
     int      row;
     int      col;
     HexColor color;
+    
+    friend class HexBoard;
 };
 
 // ----------------------------------------------------------------------------
@@ -47,6 +53,11 @@ typedef std::vector<HexPosition> HexPositionSet;
 // ----------------------------------------------------------------------------
 typedef std::vector<HexColor> HexCells;
 
+typedef struct structNeighborOffset {
+    int rowOffset;
+    int colOffset;
+    int indexOffset;
+} NeighborOffset;
 
 // ----------------------------------------------------------------------------
 // HexBoard class:
@@ -69,11 +80,33 @@ class HexBoard {
     void Adjacent(int row, int col, HexPositionSet &hps, HexColor color = HEXNULL );
     
     // ------- return the dimension of the board
-    int dim(void);
+    inline int dim(void);
     
     private:
-    int size;
+    int UP, DOWN, LEFT, RIGHT;
+    const int NEIGHBORS = 6;
+    
+    int size;                                  // board dimension
+    
+    // offsets to access adjacent cells, pre-set rowOffset and colOffset.
+    // indexOffset will be set in constructor, when we know the dimension of the board.
+    NeighborOffset neighborOffsets[NEIGHBORS] = {
+        { -1, 0, 0 }, { -1, 1, 0 },
+        { 0, -1, 0 }, {  0, 1, 0 },
+        { 1, -1, 0 }, { 1, -1, 0 }        
+    };
+    
+    enum { OFFSET_UP = 0, OFFSET_UPRIGHT, 
+           OFFSET_LEFT,   OFFSET_RIGHT,
+           OFFSET_DOWN,   OFFSET_DOWNLEFT };
+    
     HexCells cells;
+    
+    // ------- compute the index of given row, col
+    inline int cellIndex(int row, int col) { return row * size + col; }
+    
+    // ------- check that the given row, col are valid
+    void CheckRowCol(int row, int col);
 };
 
 // ----------------------------------------------------------------------------
@@ -81,7 +114,6 @@ class HexBoard {
 //    Maintains game internal states and enforces game turns and rules.
 //
 //    It uses a HexBoard structure to maintain the state of the board
-//    It uses a Graph structure to manage board connectivity and traversal
 //    It uses a UnionFind structure for easy detection of winning moves
 // ----------------------------------------------------------------------------
 class HexGame {
@@ -105,7 +137,6 @@ class HexGame {
     
     private:
     HexBoard  *pBoard;      // pointer to HexBoard structure to maintain board state
-    Graph     *pGraph;      // pointer to Graph structure to manage board connectivity
     UnionFind *pUF;         // pointer to UnionFind structure for quick detection of winning moves
     
     int       cFree;        // number of free cells
@@ -150,3 +181,12 @@ class HexGameDriver {
     HexPlayer &redPlayer;
     int nPlayers;           // players already registered
 };
+
+// ----------------------------------------------------------------------------
+// define some error conditions
+// ----------------------------------------------------------------------------
+typedef enum enumHexGameError {
+    HEXGAME_ERR_INVALIDCELL = 0x111,
+    HEXGAME_ERR_INVALIDSIZE,
+    HEXGAME_ERR_OUTOFMEMORY
+    };
