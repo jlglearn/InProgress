@@ -1,5 +1,9 @@
 #include "hexboard.h"
 
+/* ============================================================================ *
+ * HexBoard class functions                                                     *
+ * ============================================================================ */
+
 /* ---- HexBoard::HexBoard(int n) ---------------------------------------------
         Allocates a board of n x n cells
    ---------------------------------------------------------------------------- */
@@ -225,4 +229,22 @@ void HexBoard::CheckRowCol(int row, int col)
     if ((row < 0) || (row >= size) || (col < 0) || (col >= size))
         throw HEXGAME_ERR_INVALIDCELL;
 }
+
+/* ============================================================================ *
+ * HexGame class functions                                                      *
+ * ============================================================================ */
+/*
+class HexGame {
+    public:
+    HexGame(int n);
+    HexRegisterResult RegisterPlayer(HexPlayer &player, HexColor color=HEXNULL);
+    HexMoveResult Play(HexColor movesFirst=HEXNULL);
+
+    private:
+    HexBoard  board;
+    HexPlayer bluePlayer;
+    HexPlayer redPlayer;
+    HexColor  movesFirst;
+};
+*/
 

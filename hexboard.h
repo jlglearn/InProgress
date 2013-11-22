@@ -83,12 +83,20 @@ class HexBoard {
 /* ----------------------------------------------------------------------------
    class HexGame
    
-   Enforces rules of the game:
-        * alternating turns
+   Accepts player registration, starts a match, enforces game rules such as
+   alternating turns.
    ---------------------------------------------------------------------------- */
 class HexGame {
+    public:
     HexGame(int n);
-    
+    HexRegisterResult RegisterPlayer(HexPlayer &player, HexColor color=HEXNULL);
+    HexMoveResult Play(HexColor movesFirst=HEXNULL);
+
+    private:
+    HexBoard  board;
+    HexPlayer bluePlayer;
+    HexPlayer redPlayer;
+    HexColor  movesFirst;
 };
 
 #endif
