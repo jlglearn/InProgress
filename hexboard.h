@@ -2,93 +2,93 @@
 #define _HEXBOARD_H_
 
 #include <vector>
-#include <string>
-
 #include "unionfind.h"
-#include "graph.h"
 
+/* ----------------------------------------------------------------------------
+   define some useful types and constants
+   ---------------------------------------------------------------------------- */
+typedef enum enumHexColor {
+    HEXNULL = -1, HEXBLANK, HEXBLUE, HEXRED
+} HexColor;
 
-enum HexBoardColor { HEXNULL = 0, HEXBLANK, HEXBLUE, HEXRED };
-
-static const int _HexErrBase = 0x122;
-enum HexBoardError {
-    HEXBOARD_ERR_OUTOFMEMORY = _HexErrBase,
-    HEXBOARD_ERR_INVALIDSIZE,
-    HEXBOARD_ERR_INVALIDCELL
-};
-
-enum HexMoveResult {
-    HEXMOVE_OK,
+typedef enum enumHexMoveResult {
+    HEXMOVE_INVALIDCELL = -4,
     HEXMOVE_INVALIDTURN,
-    HEXMOVE_INVALIDCELL,
-    HEXMOVE_NOTADJACENT,
+    HEXMOVE_INVALIDCOLOR,
     HEXMOVE_OCCUPIED,
-    HEXMOVE_WINNER,
-    HEXMOVE_DRAW
-};
+    HEXMOVE_OK = 0,
+    HEXMOVE_DRAW,
+    HEXMOVE_WINNER
+} HexMoveResult;
 
-typedef int CellID;
+typedef std::vector<HexColor> HexCellSet;
 
-typedef struct structHexBoardCell {
-    CellID idCell;
-    HexBoardColor color;
-} HexBoardCell;
+typedef struct structHexPosition {
+    int row;
+    int col;
+    HexColor color;
+} HexPosition;
 
-typedef std::vector<HexBoardCell> HexBoardCells;
-        
+typedef std::vector<HexPosition> HexPositionSet;
 
-    
+typedef enum enumHexDirection {
+    HEXDIRECTION_DOWNUP,
+    HEXDIRECTION_LEFTRIGHT
+} HexDirection;
+
+const int HEXMINSIZE = 3;
+const int HEXMAXSIZE = 25;
+
+typedef enum enumHexGameError {
+    HEXGAME_ERR_INVALIDSIZE = 0x111,
+    HEXGAME_ERR_INVALIDCELL,
+    HEXGAME_ERR_INVALIDCOLOR
+} HexGameError;
+
+typedef struct structHexNeighborOffset {
+    int rowOffset;
+    int colOffset;
+} HexNeighborOffset;
+
+/* ----------------------------------------------------------------------------
+   class HexBoard
+   
+   ---------------------------------------------------------------------------- */
 class HexBoard {
-
     public:
     HexBoard(int n);
-    ~HexBoard(void);
     
-    HexBoardColor Color(int row, int col); // return the color of the given cell (HEXBLANK, HEXBLUE, HEXRED, or HEXNULL if error)
-    HexBoardColor Turn(void);           // return whose turn it is to play
-    HexMoveResult Move(HexBoardColor turn, int row, int col);   // place chip of given color at (row, col)
-    
-    int dim(void);                      // dimension of the board (in cells per side)
-    
-    private:    
-    Graph               board;          // Graph underlying structure for path management
-    HexBoardCells       cells;          // cell-specific information, including color
-    
-    int size;                           // board size (number of rows, number of columns)
-    HexBoardColor nextMove;             // who moves next
-    
-    int TOP, BOTTOM, LEFT, RIGHT;       // index of 4 virtual cells
-    int BLUEHOME, REDHOME;              // starting location for blue and red
-    int BLUEGOAL, REDGOAL;              // target location for blue and red
-    
-    int IDMAXCELL;                      // ID of max regular cell on the board (excluding virtual cells)
-    
-    int nBlank;                         // number of blank cells remaining
-    
-    UnionFind *pUF;                     // compute winners easily
-
-    
-    int cellIndex(int row, int col);    // given a (row, column) pair, compute index of node
-    void connect(CellID c1, CellID c2); // create an edge between cells c1 and c2
-    bool checkRowCol(int row, int col); // check that a given (row, column) pair is within board size
-    
-    
-    friend class HexBoardIO;
-    
-};
-
-class HexBoardIO {
-    public:
-    HexBoardIO(HexBoard &game);
-    ~HexBoardIO(void);
-    void print(void);
-    void prompt(void);
-    bool parse(const std::string r, const std::string c, int &row, int &col);
-    void moveFeedback(HexMoveResult result);
+    HexColor Color(int row, int col);
+    HexMoveResult Move(int row, int col, HexColor color);
+    void Adjacent(int row, int col, HexPositionSet &hps, HexColor color=HEXNULL);
+    void AllCells(HexPositionSet &hps, HexColor color);
+    int dim(void);
+    void Reset(int n);
     
     private:
-    HexBoard &board;
+    HexCellSet cells;
+    UnionFind UF;
+    int nFree;
+    int size;
+    
+    int BLUEHOME, BLUEGOAL, REDHOME, REDGOAL;
+    
+    void CheckRowCol(int row, int col);
+    inline int cellIndex(int row, int col) { return row * size + col; }
+    inline int rowFromIndex(int index) { return index / size; }
+    inline int colFromIndex(int index) { return index % size; }
+    friend class HexGame;
 };
 
+/* ----------------------------------------------------------------------------
+   class HexGame
+   
+   Enforces rules of the game:
+        * alternating turns
+   ---------------------------------------------------------------------------- */
+class HexGame {
+    HexGame(int n);
+    
+};
 
 #endif

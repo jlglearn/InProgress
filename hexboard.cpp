@@ -1,206 +1,228 @@
-#include <iostream>
 #include "hexboard.h"
 
-
+/* ---- HexBoard::HexBoard(int n) ---------------------------------------------
+        Allocates a board of n x n cells
+   ---------------------------------------------------------------------------- */
 HexBoard::HexBoard(int n)
+{   Reset(n);   }
+
+/* ---- void HexBoard::Reset(int n) -------------------------------------------
+        Clear board and all internal states, and initialize to empty n x n board
+   ---------------------------------------------------------------------------- */
+void HexBoard::Reset(int n)
 {
-    if (n < 2) throw HEXBOARD_ERR_INVALIDSIZE;
-    
-    int nsquared = n * n;
-    
-    size   = n;
-    TOP    = nsquared + 0;              // virtual TOP cell
-    BOTTOM = nsquared + 1;              // virtual BOTTOM cell
-    LEFT   = nsquared + 2;              // virtual LEFT cell
-    RIGHT  = nsquared + 3;              // virtual RIGHT cell
-    
-    IDMAXCELL = nsquared;               // ID of max regular cell, excluding 4 virtual cells
-    
-    board.Reset(nsquared + 4);          // board has size (n * n) + 4 virtual nodes
-    cells.resize(nsquared + 4);         // cells array has same size as board
-    pUF = new UnionFind(nsquared + 4);  // UF has same size as board
-    
-    for (int r = 0; r < size; r++)
-    {
-        for (int c = 0; c < size; c++)
-        {
-            int idCell = cellIndex(r, c);
-            
-            // initialize cell to BLANK
-            cells[idCell].idCell = idCell;
-            cells[idCell].color = HEXBLANK;
-            
-            // unless left-most column, connect left and down-left
-            if (c > 0)
-            {
-                // connect with cell to the left
-                connect(idCell, cellIndex(r, c-1));
-                
-                // unless bottom row, connect with cell down-left
-                if (r < (size - 1)) connect(idCell, cellIndex(r+1, c-1));
-            }
-            
-            // unless right-most column, connect right
-            if (c < (size - 1)) connect(idCell, cellIndex(r, c+1));
-            
-            // unless bottom row, connect down
-            if (r < (size - 1)) connect(cellIndex(r,c), cellIndex(r+1, c));
-            
-            // if leftmost column, connect with LEFT virtual cell
-            if (c == 0) connect(idCell, LEFT);
-            
-            // if rightmost column, connect with RIGHT virtual cell
-            if (c == (size - 1)) connect(idCell, RIGHT);
-            
-            // if topmost row, connect with TOP virtual cell
-            if (r == 0) connect(idCell, TOP);
-            
-            // if bottommost row, connect with BOTTOM cell
-            if (r == (size - 1)) connect(idCell, BOTTOM);
-        }
-    }
-    
-    // initialize BLUEHOME, REDHOME, BLUEGOAL, REDGOAL
-    BLUEHOME = BOTTOM;
-    BLUEGOAL = TOP;
-    REDHOME  = LEFT;
-    REDGOAL  = RIGHT;
-    
-    nBlank   = nsquared;        // initially, all cells start blank
-    nextMove = HEXBLUE;         // blue starts
-}
-
-HexBoard::~HexBoard(void)
-{
-    if (pUF) delete pUF;
-}
-
-inline int HexBoard::cellIndex(int row, int col) 
-{   return (row * size) + col;  }
-
-void HexBoard::connect(CellID c1, CellID c2)
-{   board.AddEdge((VertexID) c1, (VertexID) c2);    }
-
-HexMoveResult HexBoard::Move(HexBoardColor turn, int row, int col)
-{
-    if (turn != nextMove)
-        return HEXMOVE_INVALIDTURN;
+    if ((n < HEXMINSIZE) || (n > HEXMAXSIZE))
+        throw HEXGAME_ERR_INVALIDSIZE;
         
-    if (!checkRowCol(row, col))
+    int n2 = n * n;
+    cells.clear();                  // reset cells
+    cells.resize(n2 + 4, HEXBLANK); // allocate n x n + 4 virtual cells
+    UF.Reset(n2 + 4);               // and UnionFind structure same size
+    nFree = n2;                     // initially, all cells are free
+    size = n;                       // remember size
+    
+    // compute indices for BLUEHOME, BLUEGOAL, REDHOME, REDGOAL
+    BLUEHOME = n2 + 0;
+    BLUEGOAL = n2 + 1;
+    REDHOME  = n2 + 2;
+    REDGOAL  = n2 + 3;
+}
+
+/* ---- HexColor HexBoard::Color(int row, int col) ---------------------------
+        Returns the color (HEXBLUE, HEXRED, HEXBLANK) of the given cell.
+        throws HEXGAME_ERR_INVALIDCELL exception if row, col invalid.
+   ---------------------------------------------------------------------------- */
+HexColor HexBoard::Color(int row, int col)
+{
+    CheckRowCol(row, col);
+    return cells[cellIndex(row, col)];
+}
+
+
+/* ---- int dim(void) ---------------------------------------------------------
+        Returns the dimension of the board (number of cells per side)
+   ---------------------------------------------------------------------------- */
+int HexBoard::dim(void)
+{   return size;    }
+
+
+/* ---- void Adjacent(int row, int col, HexPositionSet &hps, HexColor color=HEXNULL)
+        Return the cells adjacent to the given (row, col) cell.
+        An optional color parameter will restrict the results to adjacent cells
+        of the same color as the given (row, col) cell.
+   
+        Client code must provide a valid reference to a HexPositionSet object
+        that will be used to return information about the adjacent cells.
+        
+        Throws HEXGAME_ERR_INVALIDCELL if row,col are invalid.
+   ---------------------------------------------------------------------------- */
+void HexBoard::Adjacent(int row, int col, HexPositionSet &hps, HexColor color)
+{
+    HexNeighborOffset NO[6] = {
+        {-1,  0},     // offset to UP neighbor
+        {-1,  1},     // offset to UP-RIGHT neighbor
+        { 0, -1},     // offset to LEFT neighbor
+        { 0,  1},     // offset to RIGHT neighbor
+        { 1,  0},     // offset to DOWN neighbor
+        { 1, -1}      // offset to DOWN-LEFT neighbor
+    };
+    
+    CheckRowCol(row, col);
+    
+    int index = cellIndex(row, col);    // compute the index for given (row, col)
+    int iMax  = size * size;            // compute max valid index
+    
+    hps.clear();                        // clear results
+    
+    // examine each of the 6 possible neighbors, and copy the information
+    // for all qualifying cells
+    for (int iNeighbor = 0; iNeighbor < 6; iNeighbor++)
+    {
+        int thisRow = row + NO[iNeighbor].rowOffset;
+        int thisCol = col + NO[iNeighbor].colOffset;
+        
+        if ((thisRow < 0) || (thisRow >= size) || (thisCol < 0) || (thisCol >= size))
+        {
+            // out of bounds, ignore
+            continue;
+        }
+        
+        // index for this adjacent cell
+        int thisIndex = cellIndex(thisRow, thisCol);
+        
+        HexColor thisColor = cells[thisIndex];      // color of adjacent cell
+        
+        if ((color == HEXNULL) || (color == thisColor))
+        {
+            // if don't care about color, or cell is of correct color, copy it
+            HexPosition p;
+            p.row = thisRow;
+            p.col = thisCol; 
+            p.color = thisColor;
+            hps.push_back(p);
+        }
+    }    
+}
+
+/* ---- void AllCells(HexPositionSet &hps, HexColor color) --------------------
+        Return all the board cells of the given color.
+        Valid color options are HEXBLUE, HEXRED, HEXBLANK
+        
+        Client code must provide a valid reference to a HexPositionSet object
+        that will be used to return information about the adjacent cells.
+        
+        Throws HEXGAME_ERR_INVALIDCOLOR if given color is invalid
+   ---------------------------------------------------------------------------- */
+void HexBoard::AllCells(HexPositionSet &hps, HexColor color)
+{
+    int iMax  = size * size;            // compute max valid index    
+    hps.clear();                        // clear results
+    
+    // examine each board cell, and copy the information of all qualifying cells
+    for (int i = 0; i < iMax; i++)
+    {        
+        HexColor thisColor = cells[i];  // color of current cell
+        
+        if (color == thisColor)
+        {
+            // if matching color, copy it
+            HexPosition p;
+            p.row = rowFromIndex(i);
+            p.col = colFromIndex(i);
+            p.color = thisColor;
+            hps.push_back(p);
+        }
+    }    
+}       
+
+/* ---- HexMoveResult Move(int row, int col, HexColor color) ------------------
+        Place a colored chip on the given row, col.
+        
+        HEXBLUE moves from DOWN to UP, 
+        HEXRED moves from LEFT to RIGHT
+        
+        The function does not enforce any other rules.  In particular, it does
+        not enforce alternate turns.
+        
+        Return value is one of the following:
+        HEXMOVE_INVALIDCOLOR : given color is invalid
+        HEXMOVE_INVALIDCELL:   given (row, col) is invalid
+        HEXMOVE_OCCUPIED:      given cell already occupied
+        HEXMOVE_WINNER:        move results in a win
+        HEXMOVE_DRAW:          move results in a draw
+        HEXMOVE_OK:            move accepted
+   ---------------------------------------------------------------------------- */
+HexMoveResult HexBoard::Move(int row, int col, HexColor color)
+{
+    if ((row < 0) || (row >= size) || (col < 0) || (col >= size))
         return HEXMOVE_INVALIDCELL;
         
-    CellID idCell = cellIndex(row, col);
-    
-    if (cells[idCell].color != HEXBLANK)
+    if ((color != HEXBLUE) && (color != HEXRED))
+        return HEXMOVE_INVALIDCOLOR;
+
+    int thisIndex = cellIndex(row, col);
+    if (cells[thisIndex] != HEXBLANK)
         return HEXMOVE_OCCUPIED;
-        
-    NeighborSet *pN = board.Neighbors(idCell);
-    bool fAdjacentOk = false;
-    for (int i = 0; i < pN->size(); i++)
+
+    cells[thisIndex] = color;               // place colored chip on given cell
+    nFree--;                                // one fewer free cell
+
+    // link to any adjacent cells of same color
+    HexPositionSet hps;
+    Adjacent(row, col, hps, color);    
+    for (int i = 0; i < hps.size(); i++)
     {
-        CellID idNeighbor = (*pN)[i].idNeighbor;
-        if ((idNeighbor >= 0) && (cells[idNeighbor].color == turn))
+        UF.Join(thisIndex, cellIndex(hps[i].row, hps[i].col));
+    }
+    
+    // maintain 4 virtual cells
+    if (color == HEXBLUE)
+    {
+        // BLUE moves from DOWN to UP
+        if (row == (size - 1)) 
+            UF.Join(thisIndex, BLUEHOME);
+        if (row == 0) 
+            UF.Join(thisIndex, BLUEGOAL);
+            
+        if (UF.Find(BLUEHOME) == UF.Find(BLUEGOAL))
         {
-            fAdjacentOk = true;
-            pUF->Join(idNeighbor, idCell);
+            // move results in BLUE winning game
+            return HEXMOVE_WINNER;
         }
     }
-    delete pN;
     
-    if (!fAdjacentOk)
-        return HEXMOVE_NOTADJACENT;
-        
-    cells[idCell].color == turn;
-    nBlank--;
+    if (color == HEXRED)
+    {
+        // RED moves from LEFT to RIGHT
+        if (col == 0)
+            UF.Join(thisIndex, REDHOME);
+        if (col == (size - 1))
+            UF.Join(thisIndex, REDGOAL);
+            
+        if (UF.Find(REDHOME) == UF.Find(REDGOAL))
+        {
+            // move results in RED winning game
+            return HEXMOVE_WINNER;
+        }
+    }
     
-    CellID idGoal = ((turn == HEXBLUE) ? BLUEGOAL : REDGOAL);
-    
-    if (pUF->Find(idGoal) == pUF->Find(idCell))
-        return HEXMOVE_WINNER;
-        
-    if (nBlank == 0)
+    if (nFree == 0)
+    {
+        // no more free cells
         return HEXMOVE_DRAW;
-        
-    nextMove = ((nextMove == HEXBLUE) ? HEXRED : HEXBLUE);
+    }
     
     return HEXMOVE_OK;
 }
 
-inline HexBoardColor HexBoard::Turn(void)
-{   return nextMove;    }
 
-inline int HexBoard::dim(void)
-{   return size;    }
-
-HexBoardColor HexBoard::Color(int row, int col)
+/* ---- void CheckRowCol(int row, int col) ------------------------------------
+        Verifies given row, col are valid cell coordinates.
+        Throws HEXGAME_ERR_INVALIDCELL if invalid.
+   ---------------------------------------------------------------------------- */
+void HexBoard::CheckRowCol(int row, int col)
 {
-    if (!checkRowCol(row, col)) return HEXNULL;
-    return cells[cellIndex(row, col)].color;
+    if ((row < 0) || (row >= size) || (col < 0) || (col >= size))
+        throw HEXGAME_ERR_INVALIDCELL;
 }
 
-bool HexBoard::checkRowCol(int row, int col)
-{   return ((row >= 0) && (row < size) && (col >= 0) || (col < size));  }
-    
-
-HexBoardIO::HexBoardIO(HexBoard &game) : board(game) {}
-
-HexBoardIO::~HexBoardIO(void)
-{
-}
-
-void HexBoardIO::prompt(void)
-{
-    std::cout << "Please enter your move in row col format.\n";
-    std::cout << "Example: 0 A\n";
-    std::cout << ((board.Turn() == HEXBLUE) ? "BLUE" : "RED") << ", please enter your move: ";
-}
-
-bool HexBoardIO::parse(const std::string r, const std::string c, int &row, int &col)
-{
-    return false;
-}
-
-void HexBoardIO::print(void)
-{
-    int size = board.dim();
-    
-    // print column headers
-    for (int c = 0; c < size; c++)
-        std::cout << "   ";
-        
-    std::cout << "   ";
-    
-    for (int c = 0; c < size; c++)
-    {
-        char ch = 'A' + c;
-        std::cout << " " << ch << " ";
-    }
-    std::cout << "\n";
-    
-    for (int r = 0; r < size; r++)
-    {
-        for (int j = size - r; j > 0; j--)
-            std::cout << "   ";
-            
-        for (int c = 0; c < size; c++)
-        {
-            if (c == 0)
-            {
-                if (r < 10) std::cout << " ";
-                std::cout << r << " ";
-            }
-
-            std::cout << " ";            
-            HexBoardColor clr = board.Color(r, c);
-            if (clr == HEXBLUE) std::cout << "X";
-            else if (clr == HEXRED) std::cout << "O";
-            else std::cout << ".";
-            std::cout << " ";
-
-        }
-        std::cout << "\n";
-    }
-    
-    std::cout << "\nIt is now " << ((board.Turn() == HEXBLUE) ? "BLUE" : "RED") << "'s turn:\n";
-
-}
