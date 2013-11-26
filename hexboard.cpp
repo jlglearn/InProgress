@@ -10,9 +10,12 @@
 
 /* ----------------------------------------------------------------------------
    constructors
-   
+    HexBoard(void)            -- creates an empty 0 x 0 board
     HexBoard(unsigned int n)  -- creates an empty n x n board
    ---------------------------------------------------------------------------- */
+HexBoard::HexBoard(void)
+{}
+
 HexBoard::HexBoard(unsigned int n)
 {   Reset(n);   }
 
@@ -52,9 +55,15 @@ HexMoveResult HexBoard::SetColor(unsigned int row, unsigned int col, HexColor co
     
     if ((color == HEXBLUE) && (row == 0))
         G.SetVertexValue(BLUEGOAL, HEXBLUE);
-        
+    
     if ((color == HEXRED) && (col == (size - 1)))
         G.SetVertexValue(REDGOAL, HEXRED);
+    
+    VertexIDSet vs;
+    G.Neighbors(iCell, vs, true);                           // retrieve neighbors that have same color
+    
+    for (unsigned int i = 0; i < vs.size(); i++)
+        UF.Join(iCell, vs[i]);                              // and connect to them        
         
     return HEXMOVE_OK;
 }   
@@ -67,12 +76,10 @@ HexMoveResult HexBoard::SetColor(unsigned int row, unsigned int col, HexColor co
    ---------------------------------------------------------------------------- */
 HexColor HexBoard::Winner(void)
 {        
-    if (G.HasPath(BLUEHOME, BLUEGOAL, true))
+    if (UF.Find(BLUEHOME) == UF.Find(BLUEGOAL))
         return HEXBLUE;
-        
-    if (G.HasPath(REDHOME, REDGOAL, true))
+    if (UF.Find(REDHOME) == UF.Find(REDGOAL))
         return HEXRED;
-        
     return HEXBLANK;
 }
 
@@ -88,6 +95,42 @@ HexColor HexBoard::GetColor(unsigned int row, unsigned int col)
         throw HEXBOARD_ERR_INVALIDCELL;
 
     return G.GetVertexValue(cellIndex(row, col));
+}
+
+/* ----------------------------------------------------------------------------
+   void HexBoard::GetCells(HexCellSet &hcs, HexColor color=HEXBLANK);
+   
+   Return all the cells of the given color.
+   If no color given, then return the set of all open cells.
+   
+   Client must provide a reference to a valid HexCellSet object where cells
+   will be returned.
+   ---------------------------------------------------------------------------- */
+void HexBoard::GetCells(HexCellSet &hcs, HexColor color)
+{
+    unsigned int iMax = size * size;        // max number of cells
+    hcs.clear();                            // clear set of cells
+    hcs.reserve(iMax);                      // reserve enough space
+    
+    // iterate through all board cells (excluding virtual cells) and return
+    // those that are of the requested color
+    for (unsigned int row = 0, iCell = 0; row < size; row++)
+    {
+        for (unsigned int col = 0; col < size; col++, iCell++)
+        {
+            HexColor thisCell = G.GetVertexValue(iCell);
+            
+            // if color matches, copy cell info
+            if (thisCell == color)
+            {
+                HexCell cell;
+                cell.row = row;
+                cell.col = col;
+                cell.color = thisCell;
+                hcs.push_back(cell);
+            }
+        }
+    }
 }
 
 /* ----------------------------------------------------------------------------
@@ -109,7 +152,7 @@ void HexBoard::Reset(unsigned int n)
     BLUEHOME = n2 + 0;              // set values of 4 virtual cells
     BLUEGOAL = n2 + 1;
     REDHOME  = n2 + 2;
-    REDGOAL  = n2 + 3;
+    REDGOAL  = n2 + 3;    
     
     // now build graph connectivity
     for (unsigned int r = 0, iCell = 0; r < n ; r++)
@@ -144,6 +187,8 @@ void HexBoard::Reset(unsigned int n)
     // initialize HOME virtual cells to their respective colors
     G.SetVertexValue(BLUEHOME, HEXBLUE);
     G.SetVertexValue(REDHOME, HEXRED);
+    
+    UF.Reset(n2+4);                                                     // allocate space in UF structure
 }
 
 

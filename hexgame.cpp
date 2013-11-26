@@ -1,224 +1,173 @@
+#include <iostream>
+#include <sstream>
+#include <cstdlib>
+#include "hexboard.h"
 
-
-/* -------------------------------------------------------------------
+/* ============================================================================
    HexGame class
    
-   Manage turns, enforce rules, determine winner.
-   ------------------------------------------------------------------- */
-HexGame::HexGame(int n)
-{
-    int n2 = n * n;
-    
-    pBoard = new HexBoard(n);           // create board    
-    pUF = new UnionFind(n2 + 4);        // create UnionFind for easy winner detection
-    cFree = n2;                         // start with all cells free    
-    turn = HEXBLUE;                     // BLUE moves first
-    
-    // set the indices of the 4 virtual cells
-    BLUEHOME = n2 + 0;
-    BLUEGOAL = n2 + 1;
-    REDHOME  = n2 + 2;
-    REDGOAL  = n2 + 3;
-    
-}
+   Implements game flow (alternating turns), accepts player registrations,
+   initiates a game and determines when a player has won the game.
+   ============================================================================ */
 
-HexGame::~HexGame(void)
-{
-    if (pBoard) delete pBoard;
-    if (pUF) delete pUF;
-}
-
-// ------ return the color of the given cell
-HexColor HexGame::Color(int row, int col)
-{  return pBoard->Color(row, col);  }
-
-// ------ return whose turn it is to play
-HexColor HexGame::Turn(void)
-{  return turn; }
-
-// ------ return the board dimension
-int HexGame::dim(void)
-{   return pBoard->dim();   }
-
-// ------ accept a move, determine whether it's legal and whether it leads to a win
-HexMoveResult HexGame::Move(HexColor turn, int row, int col)
-{
-    if (turn != this->turn) 
-        return HEXMOVE_INVALIDTURN;
-        
-    if (!CheckRowCol(row, col)) 
-        return HEXMOVE_INVALIDCELL;
-    
-    if (pBoard->Color(row, col) != HEXBLANK)
-        return HEXMOVE_OCCUPIED;
-
-    HexPositionSet hps;
-    int iHome, iGoal;
-    int iCell = pBoard->cellIndex(row, col);
-    int size  = pBoard->dim();
-
-    // set current cell's color
-    pBoard->SetColor(row, col, turn);
-    
-    // retrieve adjacent cells of same color
-    pBoard->Adjacent(row, col, hps, turn);
-    
-    // and connect to them        
-    for (int i = 0; i < hps.size(); i++)
-        pUF->Join(iCell, pBoard->cellIndex(hps.row, hps.col));
-    
-    // BLUE moves DOWN-UP
-    if (turn == HEXBLUE)
-    {
-        if (row == 0) 
-            pUF->Join(iCell, BLUEGOAL);
-            
-        if (row == (size - 1)) 
-            pUF->Join(iCell, BLUEHOME);
-            
-        iHome = BLUEHOME;
-        iGoal = BLUEGOAL;
-    }
-    else // RED moves LEFT-RIGHT
-    {
-        if (col == 0)
-            pUF->Join(iCell, REDHOME);
-            
-        if (col == (size - 1))
-            pUF->Join(iCell, REDGOAL);
-            
-        iHome = REDHOME;
-        iGoal = REDGOAL;
-    }
-    
-    // determine whether player has won
-    if (pUF->Find(iHome) == pUF->Find(iGoal))
-        return HEXMOVE_WINNER;
-        
-    // determine whether any empty cell remains
-    if (--cFree == 0)
-        return HEXMOVE_DRAW;
-        
-    // record whose next turn
-    this->turn = ((turn == HEXBLUE) ? HEXRED : HEXBLUE);
-        
-    return HEXMOVE_OK;
-}
-
-
-/* -------------------------------------------------------------------
-   HexBoard class
+/* ----------------------------------------------------------------------------
+   HexGame::HexGame(unsigned int n)
    
-   Manage the internal board state.
-   ------------------------------------------------------------------- */
-HexBoard::HexBoard(int n)
+   Builds a game with a board of size n x n cells.
+   n must be in the range 3-15
+   ---------------------------------------------------------------------------- */
+HexGame::HexGame(unsigned int n)
+{   Reset(n);   }
+
+/* ----------------------------------------------------------------------------
+   HexColor HexGame::RegisterPlayer(HexPlayer *p, HexColor color=HEXBLANK);
+   
+   Accepts a player registration.
+   The optional parameter color indicates which color the player is requesting.
+   
+   Returns the color assigned to the player, or HEXNULL in case that:
+       * Two players have already registered for the game
+       * The requested color has already been assigned
+   ---------------------------------------------------------------------------- */
+HexColor HexGame::RegisterPlayer(HexPlayer *p, HexColor color)
 {
-    if ((n < 0) || (n > HEX_MAXSIZE))
+    if (p == (HexPlayer *)0)
+        throw HEXGAME_ERR_INVALIDPLAYER;
+    
+    if ((color != HEXBLANK) && (color != HEXBLUE) && (color != HEXRED))
+        throw HEXGAME_ERR_INVALIDCOLOR;
+        
+    if ((color == HEXBLANK) || ((color == HEXBLUE) && (pBluePlayer == (HexPlayer *)0)))
+    {
+        // register as blue player
+        pBluePlayer = p;
+        return HEXBLUE;
+    }
+    
+    if ((color == HEXBLANK) || ((color == HEXRED) && (pRedPlayer == (HexPlayer *)0)))
+    {
+        // register as red player
+        pRedPlayer = p;
+        return HEXRED;
+    }
+    
+    // either two players have already registered or else the requested color is not available
+    return HEXNULL;
+}
+
+/* ----------------------------------------------------------------------------
+   HexColor HexGame::Play(void);
+   HexColor HexGame::Play(HexColor movesFirst);
+   
+   Initiates a game.
+   The optional second parameter indicates which player moves first.
+   If not specified, blue player will move first.
+   If HEXBLANK is specified as movesFirst color, then first mover will be chosen at random.
+   
+   Assigns a default player to any unregistered players.
+   
+   Returns the color of the player who wins the game.
+   ---------------------------------------------------------------------------- */
+HexColor HexGame::Play(void)
+{   Play(HEXBLUE); }
+
+HexColor HexGame::Play(HexColor movesFirst)
+{
+    if ((movesFirst != HEXBLUE) && (movesFirst != HEXRED) && (movesFirst != HEXBLANK))
+        throw HEXGAME_ERR_INVALIDCOLOR;
+        
+    if (movesFirst == HEXBLANK)
+    {
+        // chose firstMover at random
+        movesFirst = (((((double)rand()) / RAND_MAX) < 0.50) ? HEXBLUE : HEXRED);
+    }
+        
+    HexPlayer *players[2];
+    HexColor  turns[2];
+    HexColor  winner = HEXBLANK;
+
+    // assign a default player to any unregistered player
+    if (pBluePlayer == (HexPlayer *)0)
+        pBluePlayer = new HexPlayer;
+        
+    if (pRedPlayer == (HexPlayer *)0)
+        pRedPlayer = new HexPlayer;
+    
+    // set correct turn order    
+    if (movesFirst == HEXBLUE)
+    {
+        turns[0] = HEXBLUE;
+        turns[1] = HEXRED;
+        players[0] = pBluePlayer;
+        players[1] = pRedPlayer;
+    }
+    else
+    {
+        turns[0] = HEXRED;
+        turns[1] = HEXBLUE;
+        players[0] = pRedPlayer;
+        players[1] = pBluePlayer;
+    }
+        
+    // start play, alternate turns until there is a winner
+    for (unsigned int iTurn = 0; winner == HEXBLANK; iTurn++)
+    {       
+        gameIO.PrintBoard(board);
+        
+        // make a copy of the playing board to hand down to player code
+        HexBoard   boardCopy(board);
+        HexColor   thisTurn = turns[iTurn % 2];
+        HexPlayer *thisPlayer = players[iTurn % 2];
+        
+        unsigned int row, col;
+        HexMoveResult result;
+        
+        // obtain move from player
+        while (true)
+        {
+            gameIO.Prompt(thisTurn);
+            
+            thisPlayer->Move(boardCopy, thisTurn, row, col);
+            
+            // pass player's move to board manager
+            result = board.SetColor(row, col, thisTurn);
+            
+            // provide feedback
+            gameIO.MoveFeedback(result, thisTurn, row, col);
+            
+            // if move is not accepted, prompt again
+            if (result != HEXMOVE_OK) continue;
+            
+            // check for a winner
+            winner = board.Winner();
+            
+            if (winner != HEXBLANK)
+            {
+                // indeed, have a winner, print the final board and announce winner
+                gameIO.PrintBoard(board);
+                gameIO.AnnounceWinner(winner);
+            }
+            
+            break;  // break out of prompt loop into turns loop
+        }
+    }
+    
+    return winner;
+}   
+   
+/* ----------------------------------------------------------------------------
+   void HexGame::Reset(unsigned int n)
+   
+   Clears all internal state and initializes an empty game on a board of size
+   n x n.
+   ---------------------------------------------------------------------------- */
+void HexGame::Reset(unsigned int n)
+{
+    if ((n < HEXMINSIZE) || (n > HEXMAXSIZE))
         throw HEXGAME_ERR_INVALIDSIZE;
-        
-    int n2 = n * n;
-    int ncells = n2 + 4;
-
-    size  = n;                          // remember board dimension
-    UP    = n2 + 0;                     // define indices for TOP, DOWN, LEFT, RIGHT
-    DOWN  = n2 + 1;
-    LEFT  = n2 + 2;
-    RIGHT = n2 + 3;
     
-    cells.clear();
-    cells.resize(ncells, HEXBLANK);     // make room for n x n board + 4 virtual cells
-                                        // and initialize to BLANK (empty)
-                   
-    // precompute offset table for easy access of adjacent cells                   
-    neighborOffsets[OFFSET_UP].indexOffset       = -size;
-    neighborOffsets[OFFSET_UPRIGHT].indexOffset  = -size + 1;
-    neighborOffsets[OFFSET_LEFT].indexOffset     = -1;
-    neighborOffsets[OFFSET_RIGHT].indexOffset    = 1;
-    neighborOffsets[OFFSET_DOWN].indexOffset     = size;
-    neighborOffsets[OFFSET_DOWNLEFT].indexOffset = size - 1;
+    board.Reset(n);
+    
+    pBluePlayer = (HexPlayer *)0;
+    pRedPlayer  = (HexPlayer *)0;
 }
-
-
-void HexBoard::Adjacent(int row, int col, HexPositionSet &hps, HexColor color = HEXNULL )
-{
-    int i, iCell, iNeighbor, iMax;
-    
-    if (!CheckRowCol(row, col)) throw HEXGAME_ERR_INVALIDCELL;
-    
-    iMax = size * size;
-    hps.clear();
-    
-    iCell = cellIndex(row, col);
-
-    for (int i = 0; i < NEIGHBORS; i++)
-    {
-        int iNeighbor = iCell + neighborOffsets[i].indexOffset;
-        
-        if ((iNeighbor < 0) || (iNeighbor >= iMax))
-        {
-            // out of bounds
-            continue;
-        }
-        
-        // if need to filter on color, make sure they're same color
-        if ((color != HEXNULL) && (cells[iNeighbor].color != color))
-            continue;
-        
-        // return information for current cell
-        HexPosition p;        
-        p.row = row + neighborOffsets[i].rowOffset;
-        p.col = col + neighborOffsets[i].colOffset;
-        p.color = cells[iNeighbor];
-        hps.push_back(p);
-    }
-}
-
-void HexBoard::AllCells(HexPositionSet &hps, HexColor color = HEXBLANK )
-{
-    int iMax = size * size;
-    
-    hps.clear();
-    
-    // iterate through all cells and return those that are of the requested color
-    for (int i = 0; i < iMax; i++)
-    {
-        if (cells[i] == color)
-        {
-            HexPosition p;
-            p.row = rowFromIndex(i);
-            p.col = colFromIndex(i);
-            p.color = color;
-            hps.push_back(p);
-        }
-    }
-}
-
-inline int HexBoard::dim(void)
-{   return size;    }
-
-HexColor HexBoard::Color(int row, int col)
-{
-    if (!CheckRowCol(row, col)) throw HEXGAME_ERR_INVALIDCELL;
-    return cells[cellIndex(row, col)];
-}
-
-void HexBoard::SetColor(int row, int col, HexColor color)
-{
-    if (!CheckRowCol(row, col)) throw HEXGAME_ERR_IVALIDCELL;
-    
-    int iCell = cellIndex(row, col);        
-    if (cells[iCell] != HEXBLANK) throw HEXGAME_ERR_CELLOCCUPIED;
-    
-    cells[iCell] = color;
-}
-
-bool HexBoard::CheckRowCol(int row, int col)
-{   return ((row >= 0) && (row < size) && (col >= 0) && (col < size));  }
-
-/* -------------------------------------------------------------------
-   HexPosition class   
-   ------------------------------------------------------------------- */
-HexPosition::HexPosition(void) { }
-inline int HexPosition::Row(void) { return row; }
-inline int HexPosition::Col(void) { return col; }
-inline HexColor HexPosition::Color(void) { return color; }

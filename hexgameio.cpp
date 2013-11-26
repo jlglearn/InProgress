@@ -60,7 +60,7 @@ void HexGameIO::MoveFeedback(HexMoveResult result, HexColor turn, int row, int c
     switch (result)
     {
         case HEXMOVE_OK:
-            std::cout << "Move accepted...\n";
+            std::cout << "Move accepted... (" << row << ", " << col << ")\n";
             break;            
             
         case HEXMOVE_INVALIDCELL:
@@ -152,9 +152,9 @@ void HexGameIO::PrintBoard(HexBoard &board)
             
         std::cout << " \\ " << row << " ";
         
-        if (row == (size/2))
+        if (row == (size/2 - 1))
             std::cout << name(HEXRED);
-        else if (row == (size/2 + 1))
+        else if (row == (size/2))
             std::cout << "GOAL";
         
         std::cout << "\n";
@@ -188,5 +188,5 @@ void HexGameIO::PrintBoard(HexBoard &board)
     for (int i = 0; i < padding; i++)
         std::cout << " ";
         
-    std::cout << name(HEXBLUE) << " HOME (" << chip(HEXBLUE) <<")\n";
+    std::cout << name(HEXBLUE) << " HOME (" << chip(HEXBLUE) <<")\n\n";
 }
