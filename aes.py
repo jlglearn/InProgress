@@ -38,8 +38,8 @@ InvSBox = [
     0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 ];
 
-Rcon = [0x00000000, 0x00000001, 0x00000002, 0x00000004, 0x00000008, 0x00000010, 0x00000020, 0x00000040, 0x00000080,
-        0x0000001b, 0x00000036];
+Rcon = [0x00000000, 0x01000000, 0x02000000, 0x04000000, 0x08000000, 0x10000000, 0x20000000, 0x40000000, 0x80000000,
+        0x1b000000, 0x36000000];
 
 def getRandomBytes(n):
     return [randint(0,255) for i in range(n)];
@@ -63,14 +63,14 @@ def xor(a, b):
     return [a[i] ^ b[i] for i in range(n)];
 
 def PackWord(b0, b1, b2, b3):
-    return (b0 & 0xFF) + ((b1 & 0xFF) << 8) + ((b2 & 0xFF) << 16) + ((b3 & 0xFF) << 24);
+    return ((b0 & 0xFF) << 24) + ((b1 & 0xFF) << 16) + ((b2 & 0xFF) << 8) + ((b3 & 0xFF) << 0);
 
 def SubBytes(s):
     global SBox;
     return [SBox[s[i]] for i in range(len(s))];
 
 def SplitWord(w):
-    return [w & 0xFF, (w >> 8) & 0xFF, (w >> 16) & 0xFF, (w >> 24) & 0xFF];
+    return [(w >> 24) & 0xFF, (w >> 16) & 0xFF, (w >> 8) & 0xFF, (w >> 0) & 0xFF];
     
 def SubWord(w):
     t = SubBytes(SplitWord(w));
