@@ -163,7 +163,7 @@ def PrintState(s):
                                    
                                    
 def KeyMatrix(keys):
-    return [(keys[i] >> (8 * j)) & 0xFF for j in range(4) for i in range(4)];
+    return [(keys[j] >> (24 - (8 * i))) & 0xFF for i in range(4) for j in range(4)];
                                    
 def AddRoundKey(s, keys):
     k = KeyMatrix(keys);
