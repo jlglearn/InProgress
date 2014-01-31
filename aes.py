@@ -104,6 +104,28 @@ def ShiftRows(s):
     
     return s;
 
+def MixColumns(s):
+
+    n = len(s);
+    
+    #s1 is a copy of the input state
+    s1 = [s[i] for i in range(n)];
+    
+    #s2 is s[i] * 2 in GF8;  This implies that s2 + s1 (s2 xor s1) is s[i] * 3 in GF8
+    s2 = [((s[i] << 1) & 0xFF) ^ (0x1B if ((s[i] & 0x80) != 0) else 0x00) for i in range(n)];
+    
+    #create space for return state
+    r  = [0 for i in range(n)];
+    
+    for col in range(4):
+        r[0 * 4 + col] = s2[0 * 4 + col] ^ s1[3 * 4 + col] ^ s1[2 * 4 + col] ^ s2[1 * 4 + col] ^ s1[1 * 4 + col]; # 2 * a0 + a3 + a2 + 3 * a1
+        r[1 * 4 + col] = s2[1 * 4 + col] ^ s1[0 * 4 + col] ^ s1[3 * 4 + col] ^ s2[2 * 4 + col] ^ s1[2 * 4 + col]; # 2 * a1 + a0 + a3 + 3 * a2
+        r[2 * 4 + col] = s2[2 * 4 + col] ^ s1[1 * 4 + col] ^ s1[0 * 4 + col] ^ s2[3 * 4 + col] ^ s1[3 * 4 + col]; # 2 * a2 + a1 + a0 + 3 * a3
+        r[3 * 4 + col] = s2[3 * 4 + col] ^ s1[2 * 4 + col] ^ s1[1 * 4 + col] ^ s2[0 * 4 + col] ^ s1[0 * 4 + col]; # 2 * a3 + a2 + a1 + 3 * a0
+            
+    return r;
+
+    
     
     
 def KeyExpansion(key):
@@ -138,3 +160,19 @@ def PrintState(s):
                                    chr(s[row*4+1]).encode('hex'),
                                    chr(s[row*4+2]).encode('hex'),
                                    chr(s[row*4+3]).encode('hex'));
+                                   
+                                   
+def KeyMatrix(keys):
+    return [(keys[i] >> (8 * j)) & 0xFF for j in range(4) for i in range(4)];
+                                   
+def AddRoundKey(s, keys):
+    k = KeyMatrix(keys);
+    return [s[i] ^ k[i] for i in range(len(s))];
+    
+
+def AESEncryptBlock(sIn, keys):
+
+    s = CopyState(sIn);
+    s = AddRoundKey(s, keys[0:4]);
+    
+    return s;
