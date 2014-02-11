@@ -56,11 +56,25 @@ def HexAsciiToBytes(ha):
 def PrintHex(a):
     for i in range(len(a)):
         print "{:08x}".format(a[i]);    
+        
+def PrintHexBytes(a, w=16):
+    if w < 1: w = 16;
+    
+    s = "";
+    for i in range(len(a)):
+        s += "{:02x} ".format(a[i]);
+        if (i % w) == w - 1:
+            print s;
+            s = "";
+            
+    if (len(a) % w) != 0:
+        print s;
+            
     
 def xor(a, b):
     n = len(a);
     if n > len(b): n = len(b);
-    return [a[i] ^ b[i] for i in range(n)];
+    return [(a[i] ^ b[i]) & 0xFF for i in range(n)];
 
 def PackWord(b0, b1, b2, b3):
     return ((b0 & 0xFF) << 24) + ((b1 & 0xFF) << 16) + ((b2 & 0xFF) << 8) + ((b3 & 0xFF) << 0);
@@ -68,6 +82,10 @@ def PackWord(b0, b1, b2, b3):
 def SubBytes(s):
     global SBox;
     return [SBox[s[i]] for i in range(len(s))];
+    
+def InvSubBytes(s):
+    global InvSBox;
+    return [InvSBox[s[i]] for i in range(len(s))];
 
 def SplitWord(w):
     return [(w >> 24) & 0xFF, (w >> 16) & 0xFF, (w >> 8) & 0xFF, (w >> 0) & 0xFF];
@@ -81,28 +99,54 @@ def RotWord(w):
     return PackWord(t[1], t[2], t[3], t[0]);
     
 def ShiftRows(s):
-    t0 = s[1*4+0];
-    s[1*4+0] = s[1*4+1];
-    s[1*4+1] = s[1*4+2];
-    s[1*4+2] = s[1*4+3];
-    s[1*4+3] = t0;
+    r = [s[i] for i in range(len(s))];
     
-    t0 = s[2*4+0];
-    t1 = s[2*4+1];
-    s[2*4+0] = s[2*4+2];
-    s[2*4+1] = s[2*4+3];
-    s[2*4+2] = t0;
-    s[2*4+3] = t1;
+    r[1*4+0] = s[1*4+1];
+    r[1*4+1] = s[1*4+2];
+    r[1*4+2] = s[1*4+3];
+    r[1*4+3] = s[1*4+0];
     
-    t0 = s[3*4+0];
-    t1 = s[3*4+1];
-    t2 = s[3*4+2];
-    s[3*4+0] = s[3*4+3];
-    s[3*4+1] = t0;
-    s[3*4+2] = t1;
-    s[3*4+3] = t2;
+    r[2*4+0] = s[2*4+2];
+    r[2*4+1] = s[2*4+3];
+    r[2*4+2] = s[2*4+0];
+    r[2*4+3] = s[2*4+1];
     
-    return s;
+    r[3*4+0] = s[3*4+3];
+    r[3*4+1] = s[3*4+0];
+    r[3*4+2] = s[3*4+1];
+    r[3*4+3] = s[3*4+2];
+    
+    return r;
+    
+def InvShiftRows(s):
+    r = [s[i] for i in range(len(s))];
+    
+    r[1*4+3] = s[1*4+2];
+    r[1*4+2] = s[1*4+1];
+    r[1*4+1] = s[1*4+0];
+    r[1*4+0] = s[1*4+3];
+    
+    r[2*4+3] = s[2*4+1];
+    r[2*4+2] = s[2*4+0];
+    r[2*4+1] = s[2*4+3];
+    r[2*4+0] = s[2*4+2];
+    
+    r[3*4+3] = s[3*4+0];
+    r[3*4+2] = s[3*4+3];
+    r[3*4+1] = s[3*4+2];
+    r[3*4+0] = s[3*4+1];
+    
+    return r;
+
+def MultiplyX(y):
+    return ((y << 1) & 0xFF) ^ (((y >> 7) & 0x01) * 0x1b);
+    
+def Multiply(x,y):
+    return ((((y >> 0) & 1) * x) ^
+            (((y >> 1) & 1) * MultiplyX(x)) ^
+            (((y >> 2) & 1) * MultiplyX(MultiplyX(x))) ^
+            (((y >> 3) & 1) * MultiplyX(MultiplyX(MultiplyX(x)))) ^
+            (((y >> 4) & 1) * MultiplyX(MultiplyX(MultiplyX(MultiplyX(x))))));
 
 def MixColumns(s):
 
@@ -125,7 +169,20 @@ def MixColumns(s):
             
     return r;
 
+def InvMixColumns(s):
+
+    n = len(s);
     
+    #create space for return state
+    r  = [0 for i in range(n)];
+    
+    for col in range(4):
+        r[0 * 4 + col] = Multiply(s[0 * 4 + col], 0x0e) ^ Multiply(s[1 * 4 + col], 0x0b) ^ Multiply(s[2 * 4 + col], 0x0d) ^ Multiply(s[3 * 4 + col], 0x09);
+        r[1 * 4 + col] = Multiply(s[0 * 4 + col], 0x09) ^ Multiply(s[1 * 4 + col], 0x0e) ^ Multiply(s[2 * 4 + col], 0x0b) ^ Multiply(s[3 * 4 + col], 0x0d);
+        r[2 * 4 + col] = Multiply(s[0 * 4 + col], 0x0d) ^ Multiply(s[1 * 4 + col], 0x09) ^ Multiply(s[2 * 4 + col], 0x0e) ^ Multiply(s[3 * 4 + col], 0x0b);
+        r[3 * 4 + col] = Multiply(s[0 * 4 + col], 0x0b) ^ Multiply(s[1 * 4 + col], 0x0d) ^ Multiply(s[2 * 4 + col], 0x09) ^ Multiply(s[3 * 4 + col], 0x0e);
+            
+    return r;    
     
     
 def KeyExpansion(key):
@@ -153,6 +210,9 @@ def KeyExpansion(key):
     
 def CopyState(a):
     return [a[row+col*4] for row in range(4) for col in range(4)];
+
+def InvCopyState(a):
+    return [a[row*4+col] for col in range(4) for row in range(4)];
     
 def PrintState(s):
     for row in range(4):
@@ -170,9 +230,173 @@ def AddRoundKey(s, keys):
     return [s[i] ^ k[i] for i in range(len(s))];
     
 
-def AESEncryptBlock(sIn, keys):
+def AESEncryptBlock(sIn, keys, Nr):
 
-    s = CopyState(sIn);
-    s = AddRoundKey(s, keys[0:4]);
+    s = AddRoundKey(sIn, keys[0:4]);
     
+    for round in range(1, Nr+1):
+        s = ShiftRows(SubBytes(s));
+        
+        if (round < Nr):
+            s = MixColumns(s);
+            
+        s = AddRoundKey(s, keys[round * 4 : (round + 1) * 4]);
+        
     return s;
+    
+def AESDecryptBlock(sIn, keys, Nr):
+    s = AddRoundKey(sIn, keys[Nr * 4 : (Nr + 1)*4]);
+    
+    for round in range(Nr-1, -1, -1):
+        s = InvSubBytes(InvShiftRows(s));     
+        s = AddRoundKey(s, keys[round*4 : (round+1)*4]);
+        if (round > 0): 
+            s = InvMixColumns(s);
+                
+    return s;
+        
+        
+
+def AESEncrypt(input, key):
+
+    L = len(key);
+    Nr = 10;
+    if L == 24: Nr = 12;
+    if L == 32: Nr = 14;
+    
+    keys = KeyExpansion(key);
+    
+    output = [];
+    for block in range(len(input)/16):
+        s = CopyState(input[block*16: (block+1)*16]);
+        s = AESEncryptBlock(s, keys, Nr);
+        output += InvCopyState(s);
+        
+    return output;
+    
+    
+    
+def AESDecryptCBC(sIn, key):
+
+    # first extract iv
+    iv = sIn[0:16];
+    # input follows iv
+    input = sIn[16:]
+    
+    L = len(key);
+    Nr = 10;
+    if L == 24: Nr = 12;
+    if L == 32: Nr = 14;
+    
+    keys = KeyExpansion(key);
+    output = [];
+    mask = iv;
+    
+    for block in range(len(input)/16):
+        t = input[block*16:(block+1)*16];
+        s = CopyState(t);
+        s = AESDecryptBlock(s, keys, Nr);
+        output += xor(mask, InvCopyState(s));
+        mask = t;
+        
+    # extract length of padding
+    p = output[len(output)-1];
+    
+    return output[0:len(output)-p];
+
+def IncCTR128(s):
+    x = 0L;
+    shiftcount = 120;
+    for i in range(16):
+        x += ((s[i] & 0xFF) << shiftcount);
+        shiftcount -= 8;
+        
+    x += 1;
+        
+    return [(x >> (8*i)) & 0xFF for i in range(15,-1,-1)]
+    
+def AESCTR(sIn, key, fDecrypt):
+
+    if fDecrypt != 0:
+        iv = sIn[0:16];
+        input = sIn[16:];
+    else:
+        iv = getRandomBytes(16);
+        input = [sIn[i] for i in range(len(sIn))];
+        
+    output = [];
+    ctr = [iv[i] for i in range(len(iv))];
+    
+    for block in range((15+len(input))/16):
+        mask = AESEncrypt(ctr, key);
+        output += xor(mask, input[block*16:(block+1)*16]);
+        print "AESCTR(): block={}".format(block);
+        print "Previous counter:"
+        PrintHexBytes(ctr);
+        ctr = IncCTR128(ctr);
+        print "After increment:"
+        PrintHexBytes(ctr);
+       
+    return output if fDecrypt != 0 else iv + output;
+    
+def AESEncryptCTR(sIn, key):
+    assert(isinstance(sIn, str));
+    return AESCTR([ord(sIn[i]) for i in range(len(sIn))], key, 0); 
+    
+def AESDecryptCTR(sIn, key):
+    return AESCTR(sIn, key, 1);        
+    
+def AESEncryptCBC(sIn, key):
+
+    assert(isinstance(sIn,str));
+
+    L = len(key);
+    Nr = 10;
+    if L == 24: Nr = 12;
+    if L == 32: Nr = 14;
+    
+    keys = KeyExpansion(key);
+    iv = getRandomBytes(16);
+    output = [];
+    
+    #pad input to full 16-byte blocks
+    p = len(sIn) % 16;
+    input = [ord(sIn[i]) for i in range(len(sIn))] + [p for i in range(16-p)];
+    
+    mask = iv;
+    for block in range(len(input)/16):
+        
+        b = xor(mask, input[block*16:(block+1)*16]);
+        s = CopyState(b);
+        s = AESEncryptBlock(s, keys, Nr);
+        c = InvCopyState(s);
+        output += c;
+        mask = c;       
+        
+    return iv + output;
+        
+    
+    
+def AESDecrypt(input, key):
+
+    L = len(key);
+    Nr = 10;
+    if L == 24: Nr = 12;
+    if L == 32: Nr = 14;
+    
+    keys = KeyExpansion(key);
+    
+    output = [];
+    
+    for block in range(len(input)/16):
+        s = CopyState(input[block*16 : (block + 1)*16]);
+        s = AESDecryptBlock(s, keys, Nr);
+        output += InvCopyState(s);
+        
+    return output;
+    
+def GetPlaintext():
+    return [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+    
+def GetKey():
+    return [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f];
